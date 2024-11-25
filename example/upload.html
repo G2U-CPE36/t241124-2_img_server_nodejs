@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Upload and Delete</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center py-10">
+
+  <!-- Header -->
+  <header class="text-center mb-10">
+    <h1 class="text-3xl font-bold mb-2">File Upload and Delete</h1>
+    <p class="text-gray-600">Upload and manage your files seamlessly.</p>
+  </header>
+
+  <!-- File Upload Form -->
+  <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-md">
+    <form id="uploadForm" class="flex flex-col space-y-4">
+      <label class="text-sm font-medium" for="fileInput">Choose a file to upload:</label>
+      <input
+        id="fileInput"
+        type="file"
+        name="file"
+        class="file-input border border-gray-300 rounded p-2 focus:ring focus:ring-indigo-500"
+        required
+      >
+      <button
+        type="submit"
+        class="bg-indigo-500 text-white font-medium py-2 px-4 rounded hover:bg-indigo-600"
+      >
+        Upload File
+      </button>
+    </form>
+    <p id="uploadMessage" class="text-center text-sm mt-4"></p>
+  </div>
+
+  <!-- Uploaded Files List -->
+  <div id="filesContainer" class="mt-10 w-full max-w-md bg-white shadow-md rounded-lg p-6">
+    <h2 class="text-xl font-semibold mb-4">Uploaded Files</h2>
+    <!-- Button to fetch and display file list -->
+        <button
+          id="listFilesButton"
+          class="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition"
+        >
+          List Files
+        </button>
+
+        <!-- File list container -->
+        <ul id="filesList" class="mt-4 space-y-2"></ul>
+  </div>
+
+  <!-- Modal Container -->
+  <div
+    id="custom-modal"
+    class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-50"
+  >
+    <!-- Modal Content -->
+    <div class="bg-white rounded-lg shadow-lg w-1/3">
+      <div class="flex justify-between items-center border-b px-4 py-3">
+        <h3 id="modal-title" class="text-lg font-bold text-gray-800">Alert</h3>
+        <button
+          id="close-modal"
+          class="text-gray-500 hover:text-gray-800"
+        >
+          &times;
+        </button>
+      </div>
+      <div id="modal-message" class="px-4 py-3 text-gray-600">
+        This is an alert message.
+      </div>
+      <div class="flex justify-end border-t px-4 py-3">
+        <button
+          id="modal-ok"
+          class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const uploadForm = document.getElementById('uploadForm');
+    const filesList = document.getElementById('filesList');
+    const uploadMessage = document.getElementById('uploadMessage');
+
+    // Target DOM elements
+    const listFilesButton = document.getElementById('listFilesButton');
+    // Function to fetch and display files
+    async function fetchFiles() {
+      try {
+        // Fetch the list of files from the server
+        const response = await fetch('http://localhost:3000/files', { mode: 'cors' });
+        if (!response.ok) throw new Error('Failed to fetch files.');
+
+        const result = await response.json();
+        if (result.status !== 'success') throw new Error(result.message);
+
+        // Populate the file list dynamically
+        const files = result.data;
+        filesList.innerHTML = files
+          .map(
+            (file) => `
+            <li class="flex justify-between items-center border-b pb-2">
+              <a
+                href="http://localhost:3000/uploads/${file}"
+                class="text-blue-500 hover:underline"
+                target="_blank"
+              >
+                ${file}
+              </a>
+              <button
+                onclick="deleteFile('${file}')"
+                class="text-red-500 hover:underline"
+              >
+                Delete
+              </button>
+            </li>`
+          )
+          .join('');
+      } catch (error) {
+        console.error('Error fetching files:', error);
+        filesList.innerHTML = `<li class="text-red-500">Failed to load files.</li>`;
+      }
+    }
+
+    // Add click event listener to the "List Files" button
+    listFilesButton.addEventListener('click', fetchFiles);
+
+    // Handle file upload
+    uploadForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(uploadForm);
+
+      try {
+        const response = await fetch('http://localhost:3000/upload', {
+          method: 'POST',
+          body: formData,
+          mode: 'cors' // Ensures CORS is enabled
+        });
+
+        const result = await response.json();
+        uploadMessage.textContent = result.message || 'File uploaded successfully.';
+        uploadMessage.classList.toggle('text-green-500', response.ok);
+        uploadMessage.classList.toggle('text-red-500', !response.ok);
+
+        if (response.ok) {
+          fetchFiles(); // Refresh the file list
+        }
+      } catch (error) {
+        uploadMessage.textContent = 'An error occurred while uploading.';
+        uploadMessage.classList.add('text-red-500');
+        console.error('Upload error:', error);
+      }
+    });
+
+    // Handle file deletion
+    async function deleteFile(filename) {
+      if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+
+      try {
+        const response = await fetch(`http://localhost:3000/delete/${filename}`, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (response.ok) {
+          showModal({
+            title: 'Done!',
+            message: result.message || 'File deleted successfully.',
+            onConfirm: () => console.log('Confirmed action!'),
+          });
+          fetchFiles(); // Refresh the file list
+        } else {
+          showModal({
+            title: 'Oops!',
+            message: result.message || 'Failed to delete the file.',
+            onConfirm: () => console.log('Confirmed action!'),
+          });
+        }
+      } catch (error) {
+        showModal({
+          title: 'Oops!',
+          message: result.message || 'Failed to delete the file.',
+          onConfirm: () => console.log('Confirmed action!'),
+        });
+        console.error('Delete error:', error);
+      }
+    }
+
+    // Modal Elements
+    const modal = document.getElementById('custom-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMessage = document.getElementById('modal-message');
+    const closeModalBtn = document.getElementById('close-modal');
+    const modalOkBtn = document.getElementById('modal-ok');
+
+    // Function to show the modal
+    function showModal({ title = 'Alert', message = '', onConfirm = null }) {
+      modalTitle.textContent = title;
+      modalMessage.textContent = message;
+
+      // Show the modal
+      modal.classList.remove('hidden');
+
+      // Close modal on OK
+      modalOkBtn.onclick = () => {
+        modal.classList.add('hidden');
+        if (onConfirm) onConfirm();
+      };
+
+      // Close modal on clicking X
+      closeModalBtn.onclick = () => {
+        modal.classList.add('hidden');
+      };
+    }
+
+    // Example usage of showModal
+    // document.getElementById('example-button').addEventListener('click', () => {
+    //   showModal({
+    //     title: 'Warning',
+    //     message: 'Are you sure you want to delete this file?',
+    //     onConfirm: () => {
+    //       console.log('Confirmed!');
+    //       // Add delete logic here
+    //     },
+    //   });
+    // });
+    // Modal Elements
+    const confirmModal = document.getElementById('confirm-modal');
+    const confirmModalTitle = document.getElementById('confirm-modal-title');
+    const confirmModalMessage = document.getElementById('confirm-modal-message');
+    const closeConfirmModalBtn = document.getElementById('close-confirm-modal');
+    const cancelConfirmModalBtn = document.getElementById('cancel-confirm-modal');
+    const confirmActionBtn = document.getElementById('confirm-action');
+
+    // Fetch files on page load
+    fetchFiles();
+  </script>
+</body>
+</html>

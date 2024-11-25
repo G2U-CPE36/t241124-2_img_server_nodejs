@@ -4,12 +4,30 @@ const path = require('path');
 const uuid = require('uuid').v4;
 const dotenv = require('dotenv');
 const fs = require('fs'); // Import fs for file system operations like deletion
+const cors = require('cors');
 
 // Load environment variables from .env file
 dotenv.config();
 
 // Initialize the app
 const app = express();
+// CORS options
+const corsOptions = {
+  origin: 'http://localhost:3001', // Allow frontend origin
+  methods: ['GET', 'POST', 'DELETE'], // Allowed HTTP methods
+  allowedHeaders: ['Content-Type'], // Allowed headers
+};
+
+// Apply CORS globally
+app.use(cors(corsOptions));
+
+// Define the upload directory from environment variable or fallback
+const uploadDir = process.env.UPLOAD_DIR || 'uploads';
+
+// Ensure the upload directory exists
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Configure file upload settings using multer
 const storage = multer.diskStorage({
@@ -89,7 +107,8 @@ app.delete('/delete/:filename', (req, res) => {
 });
 
 // Serve static files (uploaded images) from the 'uploads' directory
-app.use('/uploads', express.static(path.join(__dirname, process.env.UPLOAD_DIR || 'uploads')));
+// Serve static files with explicit CORS headers
+app.use('/uploads', cors(corsOptions), express.static(path.join(__dirname, process.env.UPLOAD_DIR || 'uploads')));
 
 // Start the server
 const host = process.env.HOST || '127.0.0.1';
@@ -97,4 +116,24 @@ const port = process.env.PORT || 3000;
 
 app.listen(port, host, () => {
   console.log(`Server is running on http://${host}:${port}`);
+});
+
+// Add a new route to fetch file names
+app.get('/files', cors(), (req, res) => {
+  fs.readdir(path.join(__dirname, uploadDir), (err, files) => {
+    if (err) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to fetch files',
+        error: err.message,
+      });
+    }
+
+    // Send file names as JSON
+    res.json({
+      status: 'success',
+      message: 'Files fetched successfully',
+      data: files,
+    });
+  });
 });
